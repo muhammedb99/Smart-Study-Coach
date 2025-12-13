@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect ,useRef} from "react";
 import ProgressChart from "../components/ProgressChart";
 
 function HomePage() {
@@ -13,6 +13,11 @@ function HomePage() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [visionResult, setVisionResult] = useState<any>(null);
   const [visionLoading, setVisionLoading] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const [voiceResult, setVoiceResult] = useState<any>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<BlobPart[]>([]);
   /* ---------- API ---------- */
 
   const sendQuestion = async () => {
@@ -28,13 +33,16 @@ function HomePage() {
       });
 
       if (!res.ok) throw new Error();
-      setResult(await res.json());
+
+      const data = await res.json();
+      setResult(data.solution);
     } catch {
       setError("אירעה שגיאה בשליחת השאלה");
     } finally {
       setLoading(false);
     }
   };
+
 
   const fetchStats = async () => {
     try {
@@ -60,6 +68,88 @@ function HomePage() {
       setError("לא ניתן להביא תרגיל מומלץ כרגע");
     }
   };
+
+
+  const startRecording = async () => {
+    setVoiceResult(null);
+    audioChunksRef.current = [];
+    setAudioBlob(null);
+
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const recorder = new MediaRecorder(stream);
+
+    mediaRecorderRef.current = recorder;
+
+    recorder.ondataavailable = (e) => {
+      audioChunksRef.current.push(e.data);
+    };
+
+    recorder.onstop = () => {
+      const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+      setAudioBlob(blob);
+    };
+
+    recorder.start();
+
+    setRecording(true);
+  };
+
+  const stopRecording = () => {
+    mediaRecorderRef.current?.stop();
+
+    mediaRecorderRef.current?.stream
+      .getTracks()
+      .forEach(track => track.stop());
+
+    setRecording(false);
+  };
+
+
+  const sendVoiceQuestion = async () => {
+  if (!audioBlob) return;
+
+  const formData = new FormData();
+    formData.append("audio", audioBlob, "voice.webm");
+
+    try {
+      const res = await fetch("/api/voice-question", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) throw new Error();
+
+      const data = await res.json();
+      setVoiceResult(data);
+    } catch {
+      setError("שגיאה בשליחת קול");
+    }
+  };
+
+  const sendVoice = async () => {
+    if (!audioBlob) {
+      setError("אין הקלטה לשליחה");
+      return;
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append("audio", audioBlob);
+
+      const res = await fetch("/api/voice-question", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) throw new Error();
+
+      const data = await res.json();
+      setVoiceResult(data);
+    } catch {
+      setError("שגיאה בשליחת הקלטה");
+    }
+  };
+
 
   const sendFeedback = async (success: boolean) => {
     if (!recommendation) return;
@@ -89,6 +179,15 @@ function HomePage() {
   useEffect(() => {
     fetchStats();
   }, []);
+
+  useEffect(() => {
+    if (voiceResult?.audio_url) {
+      const audio = new Audio(voiceResult.audio_url);
+      audio.play().catch(() => {
+        console.log("Autoplay נחסם – המשתמש יכול ללחוץ ידנית");
+      });
+    }
+  }, [voiceResult]);
 
   const sendImageToVision = async () => {
   if (!imageFile) return;
@@ -198,6 +297,58 @@ function HomePage() {
         </div>
       )}
 
+      {/* Voice Input */}
+      <div style={sectionCard}>
+        <h3>🎤 שאל שאלה בקול</h3>
+
+        {!recording ? (
+          <button onClick={startRecording} style={primaryButton}>
+            🎙️ התחל הקלטה
+          </button>
+        ) : (
+          <button onClick={stopRecording} style={failButton}>
+            ⏹️ עצור הקלטה
+          </button>
+        )}
+
+        {audioBlob && (
+          <div style={{ marginTop: 15 }}>
+            <button onClick={sendVoiceQuestion} style={secondaryButton}>
+              🚀 שלח שאלה קולית
+            </button>
+          </div>
+        )}
+      </div>
+
+      {voiceResult && (
+        <div style={{ ...sectionCard, borderRight: "6px solid #f59e0b" }}>
+          <h2>🗣️ שאלה (Voice)</h2>
+          <p>{voiceResult.question}</p>
+
+          <h3>🧠 פתרון</h3>
+          <p>{voiceResult.solution}</p>
+
+          {voiceResult.audio_url && (
+            <audio controls src={voiceResult.audio_url} style={{ marginTop: 15 }} />
+          )}
+        </div>
+      )}
+
+      {voiceResult && (
+        <div style={{ ...sectionCard, borderRight: "6px solid #0ea5e9" }}>
+          <h2>🎙️ שאלה שזוהתה מהקול</h2>
+          <p><strong>Whisper שמע:</strong> {voiceResult.question}</p>
+
+          <hr style={{ margin: "20px 0" }} />
+
+          <h2>🧠 פתרון (GPT)</h2>
+          <p>{voiceResult.solution}</p>
+
+          {voiceResult.audio_url && (
+            <audio controls src={voiceResult.audio_url} />
+          )}
+        </div>
+      )}
 
       {/* Result */}
       {result && (
@@ -220,7 +371,7 @@ function HomePage() {
       {recommendation && (
         <div style={{ ...sectionCard, borderRight: "6px solid #10b981" }}>
           <h2>📘 תרגיל מומלץ</h2>
-          <p style={{ fontSize: 16 }}>{recommendation.question.text}</p>
+          <p style={{ fontSize: 16 }}>{recommendation.question}</p>
 
           {!feedbackSent ? (
             <div style={actionsRow}>
@@ -240,7 +391,6 @@ function HomePage() {
       {/* Chart */}
       {stats && (
         <div style={chartCard}>
-          <h3 style={chartTitle}>📊 התקדמות לפי רמת קושי</h3>
           <ProgressChart data={stats} />
         </div>
       )}

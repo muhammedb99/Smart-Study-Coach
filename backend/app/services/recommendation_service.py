@@ -17,15 +17,13 @@ def get_next_difficulty(current, direction):
 
 
 def recommend_exercise(history):
-
     if len(history) < 3:
         return {
-            "question": random.choice(QUESTION_BANK["בינוני"]),
+            "question": random.choice(QUESTION_BANK["בינוני"])["text"],
             "difficulty": "בינוני"
         }
 
     recent = history[-5:]
-
     successes = [h.success for h in recent if h.success is not None]
     last_difficulty = recent[-1].difficulty or "בינוני"
 
@@ -36,23 +34,23 @@ def recommend_exercise(history):
     else:
         next_difficulty = last_difficulty
 
-    used_questions = {
-        h.question["id"]
-        for h in history
-        if isinstance(h.question, dict) and "id" in h.question
-    }
+    used_question_texts = {h.question for h in history}
 
     available = [
         q for q in QUESTION_BANK[next_difficulty]
-        if q["id"] not in used_questions
+        if q["text"] not in used_question_texts
     ]
 
-    if not available:
-        available = QUESTION_BANK[next_difficulty]
+    if available:
+        return {
+            "question": random.choice(available)["text"],
+            "difficulty": next_difficulty
+        }
+
+    # GPT fallback
+    gpt_question = generate_question_with_gpt(next_difficulty)
 
     return {
-        "question": random.choice(available),
+        "question": gpt_question,
         "difficulty": next_difficulty
     }
-
-

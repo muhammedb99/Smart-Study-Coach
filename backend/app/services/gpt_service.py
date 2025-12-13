@@ -86,39 +86,38 @@ def solve_exercise(question: str) -> dict:
 # פתרון לשאלה שהגיעה מ־Gemini Vision
 # --------------------------------------------------
 
-def solve_with_gpt(question_text: str, difficulty: str | None = None) -> dict:
-    vision_prompt = f"""
-התקבלה שאלה מתוך תמונה שצולמה.
+def solve_with_gpt(question: str, difficulty: str):
+    prompt = f"""
+פתור את השאלה הבאה.
 
-נוסח השאלה:
-{question_text}
+⚠️ החזר תשובה בפורמט JSON בלבד, בלי טקסט מסביב.
 
-רמת קושי משוערת: {difficulty if difficulty else "לא ידוע"}
-
-פתור את השאלה בצורה לימודית וברורה.
-
-⚠️ החזר JSON בלבד בפורמט:
+פורמט:
 {{
   "solution": "...",
   "explanation": "..."
 }}
+
+שאלה:
+{question}
 """
 
     response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": "אתה מורה פרטי. כל התשובות בעברית בלבד."},
-            {"role": "user", "content": vision_prompt}
-        ],
-        temperature=0.2
+        model="gpt-4o",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0
     )
 
-    content = response.choices[0].message.content
+    raw = response.choices[0].message.content.strip()
 
     try:
-        return safe_json_parse(content)
-    except Exception:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", raw, re.DOTALL)
+        if match:
+            return json.loads(match.group())
+
         return {
-            "solution": "לא ניתן היה להפיק פתרון.",
-            "explanation": "אירעה שגיאה בעיבוד פתרון השאלה מהתמונה."
+            "solution": raw,
+            "explanation": ""
         }

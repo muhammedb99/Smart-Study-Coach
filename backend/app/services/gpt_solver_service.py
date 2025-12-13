@@ -3,11 +3,12 @@ import os
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-def generate_question_with_gpt(difficulty: str) -> str:
+def solve_question_with_gpt(question: str) -> str:
     prompt = f"""
-    תן שאלה לימודית חדשה ברמת קושי: {difficulty}.
-    אל תחזור על שאלות בסיסיות.
-    החזר רק את נוסח השאלה.
+    פתור את השאלה הבאה בצורה ברורה ומדורגת:
+
+    שאלה:
+    {question}
     """
 
     response = client.chat.completions.create(
