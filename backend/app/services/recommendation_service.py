@@ -1,5 +1,6 @@
 import random
 from app.data.question_bank import QUESTION_BANK
+from app.services.gpt_question_service import generate_question_with_gpt
 
 DIFFICULTY_ORDER = ["קל", "בינוני", "קשה"]
 
@@ -26,23 +27,24 @@ def recommend_exercise(history):
     recent = history[-5:]
 
     successes = [h.success for h in recent if h.success is not None]
-
     last_difficulty = recent[-1].difficulty or "בינוני"
 
     if len(successes) >= 2 and all(successes[-2:]):
         next_difficulty = get_next_difficulty(last_difficulty, "up")
-
     elif successes and successes[-1] is False:
         next_difficulty = get_next_difficulty(last_difficulty, "down")
-
     else:
         next_difficulty = last_difficulty
 
-    used_questions = {h.question for h in history}
+    used_questions = {
+        h.question["id"]
+        for h in history
+        if isinstance(h.question, dict) and "id" in h.question
+    }
 
     available = [
         q for q in QUESTION_BANK[next_difficulty]
-        if q not in used_questions
+        if q["id"] not in used_questions
     ]
 
     if not available:
@@ -52,3 +54,5 @@ def recommend_exercise(history):
         "question": random.choice(available),
         "difficulty": next_difficulty
     }
+
+
