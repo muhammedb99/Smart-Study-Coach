@@ -1,0 +1,21 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Inter", Arial, sans-serif;
+  background: radial-gradient(circle at top, #111827, #020617);
+  color: #111;
+  direction: rtl;
+}
+
+a {
+  color: #3b82f6;
+  text-decoration: none;
+  margin-left: 12px;
+}
+
+a:hover {
+  text-decoration: underline;
+}
