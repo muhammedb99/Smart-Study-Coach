@@ -1,3 +1,10 @@
+import logging
+
+logging.getLogger("pdfminer").setLevel(logging.ERROR)
+logging.getLogger("pdfminer.layout").setLevel(logging.ERROR)
+logging.getLogger("pdfminer.pdfinterp").setLevel(logging.ERROR)
+logging.getLogger("pdfminer.pdfpage").setLevel(logging.ERROR)
+
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -19,7 +26,8 @@ from app.services.gpt_solver_service import solve_question_with_gpt
 from app.services.tts_service import text_to_speech
 from app.services.topic_detection_service import detect_topic
 from fastapi.staticfiles import StaticFiles
-
+from app.services.document_parser_service import extract_text_from_document
+from app.services.document_ai_service import summarize_document
 
 # ---------- DB ----------
 init_db()
@@ -139,6 +147,24 @@ def submit_feedback(data: ExerciseFeedback):
         "message": "התרגיל נפתר",
         "solution": result
     }
+    
+
+@app.post("/api/document-assistant")
+async def document_assistant(file: UploadFile = File(...)):
+    file_bytes = await file.read()
+    text = extract_text_from_document(file_bytes, file.filename)
+
+    ai_result = summarize_document(text)
+
+    return {
+        "filename": file.filename,
+        "result": {
+            "summary": ai_result.get("summary", ""),
+            "key_points": ai_result.get("key_points", []),
+            "practice_questions": ai_result.get("practice_questions", [])
+        }
+    }
+
 
 
 

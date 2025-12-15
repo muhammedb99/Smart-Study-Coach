@@ -1,5 +1,6 @@
 import { useState, useEffect ,useRef} from "react";
 import ProgressChart from "../components/ProgressChart";
+import DocumentAssistant from "../components/DocumentAssistant";
 
 function HomePage() {
   const [question, setQuestion] = useState("");
@@ -319,6 +320,11 @@ function HomePage() {
           </div>
         )}
       </div>
+        {/* Document Assistant */}
+        <div style={{ marginTop: 40 }}>
+          <DocumentAssistant />
+        </div>
+
 
       {voiceResult && (
         <div style={{ ...sectionCard, borderRight: "6px solid #f59e0b" }}>
