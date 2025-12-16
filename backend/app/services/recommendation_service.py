@@ -37,7 +37,7 @@ def recommend_exercise(history):
     used_question_texts = {h.question for h in history}
 
     available = [
-        q for q in QUESTION_BANK[next_difficulty]
+        q for q in QUESTION_BANK.get(next_difficulty, [])
         if q["text"] not in used_question_texts
     ]
 
@@ -47,7 +47,6 @@ def recommend_exercise(history):
             "difficulty": next_difficulty
         }
 
-    # GPT fallback
     gpt_question = generate_question_with_gpt(next_difficulty)
 
     return {
