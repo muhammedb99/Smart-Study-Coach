@@ -1,4 +1,13 @@
 import { useEffect, useState } from "react";
+import {
+  Clock,
+  MessageSquare,
+  Calendar,
+  ChevronLeft,
+  Trophy,
+  FileText
+} from "lucide-react";
+import "../HistoryPage.css";
 
 function HistoryPage() {
   const [history, setHistory] = useState<any[]>([]);
@@ -15,138 +24,73 @@ function HistoryPage() {
   }, []);
 
   return (
-    <div style={pageWrapper}>
-      <div style={pageContainer}>
-        {/* Header */}
-        <h1 style={titleStyle}>📜 היסטוריית תרגילים</h1>
-        <p style={subtitleStyle}>
-          כאן תוכל לראות את כל התרגילים שפתרת והתקדמותך לאורך זמן
-        </p>
+    <div className="history-page">
+      <div className="ambient-background"></div>
 
-        {/* States */}
-        {loading && <p style={infoText}>⏳ טוען היסטוריה...</p>}
+      <main className="history-container">
+        <header className="history-header">
+          <div className="apple-badge">Learning Log</div>
+          <h1>Past <span>Insights.</span></h1>
+          <p className="history-subtitle">Review your progress and previous interactions</p>
+        </header>
 
-        {!loading && history.length === 0 && (
-          <p style={infoText}>עדיין לא נפתרו תרגילים.</p>
-        )}
+        {loading ? (
+          <div className="history-loading">
+            <div className="dot-loader"></div>
+            <p>Retrieving your learning journey...</p>
+          </div>
+        ) : history.length === 0 ? (
+          <div className="empty-state">
+            <Clock size={48} />
+            <p>No history found yet. Your journey begins here!</p>
+          </div>
+        ) : (
+          <div className="history-list">
+            {history.map((item, index) => (
+              <div
+                key={item.id || index}
+                className="history-card animate-slide-up"
+                style={{ animationDelay: `${index * 0.05}s` }}
+              >
+                <div className="history-card-header">
+                  <div className={`history-icon-box ${item.difficulty}`}>
+                    {item.type === 'document' ? <FileText size={18} /> : <MessageSquare size={18} />}
+                  </div>
+                  <div className="history-meta">
+                    <span className="history-type">
+                      {item.difficulty} • {item.type || 'General Query'}
+                    </span>
+                    <span className="history-date">
+                      <Calendar size={12} /> {new Date(item.created_at).toLocaleString("he-IL")}
+                    </span>
+                  </div>
+                  <div className={`difficulty-indicator ${item.difficulty}`}></div>
+                </div>
 
-        {/* Cards */}
-        <div style={listWrapper}>
-          {history.map((item) => (
-            <div key={item.id} style={card}>
-              <div style={cardHeader}>
-                <span style={difficultyBadge(item.difficulty)}>
-                  {item.difficulty}
-                </span>
-                <span style={dateText}>
-                  {new Date(item.created_at).toLocaleString("he-IL")}
-                </span>
+                <div className="history-content">
+                  <p className="history-q">
+                    <strong>שאלה:</strong> {item.question}
+                  </p>
+                  {item.solution && (
+                    <div className="history-a-preview">
+                      <strong>פתרון:</strong>
+                      <p>{item.solution}</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="history-card-footer">
+                  <button className="view-detail-btn">
+                    צפה בפרטים <ChevronLeft size={14} />
+                  </button>
+                </div>
               </div>
-
-              <p style={questionText}>
-                <strong>שאלה:</strong> {item.question}
-              </p>
-
-              {item.solution && (
-                <p style={solutionText}>
-                  <strong>פתרון:</strong> {item.solution}
-                </p>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
+            ))}
+          </div>
+        )}
+      </main>
     </div>
   );
 }
 
 export default HistoryPage;
-
-/* ------------------ STYLES ------------------ */
-
-const pageWrapper = {
-  direction: "rtl" as const,
-  minHeight: "100vh",
-  background: "linear-gradient(180deg, #0f172a, #020617)",
-  paddingTop: 80,
-};
-
-const pageContainer = {
-  maxWidth: 960,
-  margin: "0 auto",
-  padding: "0 24px 60px",
-};
-
-const titleStyle = {
-  color: "#ffffff",
-  fontSize: 32,
-  fontWeight: 800,
-  marginBottom: 6,
-};
-
-const subtitleStyle = {
-  color: "#94a3b8",
-  marginBottom: 40,
-};
-
-const infoText = {
-  color: "#cbd5f5",
-  fontSize: 16,
-  marginTop: 20,
-};
-
-const listWrapper = {
-  display: "flex",
-  flexDirection: "column" as const,
-  gap: 18,
-};
-
-const card = {
-  background: "rgba(255,255,255,0.04)",
-  border: "1px solid rgba(255,255,255,0.08)",
-  borderRadius: 18,
-  padding: 22,
-  color: "#ffffff",
-  boxShadow: "0 10px 30px rgba(0,0,0,0.4)",
-  transition: "transform 0.2s ease, box-shadow 0.2s ease",
-};
-
-const cardHeader = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  marginBottom: 12,
-};
-
-const questionText = {
-  fontSize: 16,
-  lineHeight: 1.6,
-};
-
-const solutionText = {
-  fontSize: 15,
-  marginTop: 10,
-  color: "#e5e7eb",
-};
-
-const dateText = {
-  fontSize: 12,
-  color: "#94a3b8",
-};
-
-const difficultyBadge = (difficulty: string) => {
-  const colors: any = {
-    קל: "#22c55e",
-    בינוני: "#eab308",
-    קשה: "#ef4444",
-  };
-
-  return {
-    background: colors[difficulty] || "#64748b",
-    color: "#020617",
-    padding: "4px 10px",
-    borderRadius: 999,
-    fontSize: 12,
-    fontWeight: 700,
-  };
-};

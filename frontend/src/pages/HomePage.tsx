@@ -1,6 +1,12 @@
-import { useState, useEffect ,useRef} from "react";
+import { useState, useEffect, useRef } from "react";
+import {
+  Mic, StopCircle, Send, Sparkles,
+  Image as ImageIcon, BarChart3, FileText,
+  CheckCircle, XCircle, X, Camera, Waves, Upload
+} from "lucide-react";
 import ProgressChart from "../components/ProgressChart";
 import DocumentAssistant from "../components/DocumentAssistant";
+import "../HomePage.css";
 
 function HomePage() {
   const [question, setQuestion] = useState("");
@@ -9,515 +15,300 @@ function HomePage() {
   const [feedbackSent, setFeedbackSent] = useState(false);
   const [lockedRecommendation, setLockedRecommendation] = useState(false);
   const [stats, setStats] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
-  const [visionResult, setVisionResult] = useState<any>(null);
-  const [visionLoading, setVisionLoading] = useState(false);
   const [recording, setRecording] = useState(false);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
-  const [voiceResult, setVoiceResult] = useState<any>(null);
+  
+
+  // Loading & Modal UI States
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processingMessage, setProcessingMessage] = useState("");
+  const [showModal, setShowModal] = useState(false);
+
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
-  /* ---------- API ---------- */
+
+  /* ---------- API LOGIC ---------- */
+
+  const fetchStats = async () => {
+    try {
+      const res = await fetch("/api/stats");
+      setStats(await res.json());
+    } catch { console.error("שגיאה בטעינת סטטיסטיקות"); }
+  };
 
   const sendQuestion = async () => {
-    setLoading(true);
-    setError(null);
+    setProcessingMessage("Thinking...");
+    setIsProcessing(true);
+    setShowModal(true);
     setResult(null);
-
     try {
       const res = await fetch("/api/text", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question }),
       });
-
-      if (!res.ok) throw new Error();
-
       const data = await res.json();
+      // Map text result to the unified state
       setResult(data.solution);
-    } catch {
-      setError("אירעה שגיאה בשליחת השאלה");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-
-  const fetchStats = async () => {
-    try {
-      const res = await fetch("/api/stats");
-      setStats(await res.json());
-    } catch {
-      console.error("שגיאה בטעינת סטטיסטיקות");
-    }
+    } catch { setError("Error sending question"); } finally { setIsProcessing(false); }
   };
 
   const fetchRecommendation = async () => {
     if (lockedRecommendation) return;
-
+    setProcessingMessage("Generating personalized exercise...");
+    setIsProcessing(true);
+    setShowModal(true);
+    setResult(null);
     try {
       const res = await fetch("/api/recommendation");
-      if (!res.ok) throw new Error();
-
-      setRecommendation(await res.json());
+      const data = await res.json();
+      setRecommendation(data);
       setLockedRecommendation(true);
       setFeedbackSent(false);
-      setResult(null);
-    } catch {
-      setError("לא ניתן להביא תרגיל מומלץ כרגע");
-    }
+    } catch { setError("Could not fetch recommendation"); } finally { setIsProcessing(false); }
   };
 
-
   const startRecording = async () => {
-    setVoiceResult(null);
     audioChunksRef.current = [];
     setAudioBlob(null);
-
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     const recorder = new MediaRecorder(stream);
-
     mediaRecorderRef.current = recorder;
-
-    recorder.ondataavailable = (e) => {
-      audioChunksRef.current.push(e.data);
-    };
-
+    recorder.ondataavailable = (e) => audioChunksRef.current.push(e.data);
     recorder.onstop = () => {
       const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
       setAudioBlob(blob);
     };
-
     recorder.start();
-
     setRecording(true);
   };
 
   const stopRecording = () => {
     mediaRecorderRef.current?.stop();
-
-    mediaRecorderRef.current?.stream
-      .getTracks()
-      .forEach(track => track.stop());
-
+    mediaRecorderRef.current?.stream.getTracks().forEach(track => track.stop());
     setRecording(false);
   };
 
-
+  // FIXED VOICE LOGIC
   const sendVoiceQuestion = async () => {
-  if (!audioBlob) return;
+    if (!audioBlob) return;
+    setProcessingMessage("Analyzing your voice...");
+    setIsProcessing(true);
+    setShowModal(true);
+    setResult(null);
 
-  const formData = new FormData();
+    const formData = new FormData();
     formData.append("audio", audioBlob, "voice.webm");
 
     try {
-      const res = await fetch("/api/voice-question", {
-        method: "POST",
-        body: formData,
+      const res = await fetch("/api/voice-question", { method: "POST", body: formData });
+      const data = await res.json();
+
+      // MAPPING: Convert original voice format to the Bento result format
+      setResult({
+        solution: data.solution,
+        explanation: "שאלה שזוהתה: " + data.question, // Put the transcribed question here
+        hint_1: "Voice Input Detected",
+        audio_url: data.audio_url // Carry this over if you want to play it
       });
 
-      if (!res.ok) throw new Error();
-
-      const data = await res.json();
-      setVoiceResult(data);
-    } catch {
-      setError("שגיאה בשליחת קול");
-    }
+      if (data.audio_url) {
+        const audio = new Audio(data.audio_url);
+        audio.play().catch(e => console.log("Autoplay blocked"));
+      }
+    } catch { setError("Error sending audio"); } finally { setIsProcessing(false); }
   };
 
-  const sendVoice = async () => {
-    if (!audioBlob) {
-      setError("אין הקלטה לשליחה");
-      return;
-    }
+  const sendImageToVision = async () => {
+    if (!imageFile) return;
+    setProcessingMessage("Analyzing image content...");
+    setIsProcessing(true);
+    setShowModal(true);
+    setResult(null);
 
+    const formData = new FormData();
+    formData.append("file", imageFile);
     try {
-      const formData = new FormData();
-      formData.append("audio", audioBlob);
-
-      const res = await fetch("/api/voice-question", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!res.ok) throw new Error();
-
+      const res = await fetch("/api/vision-solve", { method: "POST", body: formData });
       const data = await res.json();
-      setVoiceResult(data);
-    } catch {
-      setError("שגיאה בשליחת הקלטה");
-    }
+      // MAPPING: Convert original vision format to the Bento result format
+      setResult({
+        solution: data.solution.solution,
+        explanation: data.solution.explanation,
+        hint_1: `Subject: ${data.vision.subject} (${data.vision.difficulty})`,
+      });
+    } catch { setError("Error analyzing image"); } finally { setIsProcessing(false); }
   };
-
 
   const sendFeedback = async (success: boolean) => {
     if (!recommendation) return;
-
     try {
       const res = await fetch("/api/feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          question: recommendation.question,
-          difficulty: recommendation.difficulty,
-          success,
-        }),
+        body: JSON.stringify({ question: recommendation.question, difficulty: recommendation.difficulty, success }),
       });
-
       const data = await res.json();
       if (!success && data.solution) setResult(data.solution);
-
-      setFeedbackSent(true);
-      setLockedRecommendation(false);
-      fetchStats();
-    } catch {
-      setError("שגיאה בשליחת משוב");
-    }
+      setFeedbackSent(true); setLockedRecommendation(false); fetchStats();
+    } catch { setError("Error sending feedback"); }
   };
 
-  useEffect(() => {
-    fetchStats();
-  }, []);
+  useEffect(() => { fetchStats(); }, []);
 
-  useEffect(() => {
-    if (voiceResult?.audio_url) {
-      const audio = new Audio(voiceResult.audio_url);
-      audio.play().catch(() => {
-        console.log("Autoplay נחסם – המשתמש יכול ללחוץ ידנית");
-      });
-    }
-  }, [voiceResult]);
-
-  const sendImageToVision = async () => {
-  if (!imageFile) return;
-
-  setVisionLoading(true);
-  setVisionResult(null);
-  setError(null);
-
-  const formData = new FormData();
-  formData.append("file", imageFile);
-
-  try {
-    const res = await fetch("/api/vision-solve", {
-      method: "POST",
-      body: formData,
-    });
-
-    if (!res.ok) throw new Error();
-
-    const data = await res.json();
-    setVisionResult(data);
-  } catch {
-    setError("שגיאה בניתוח התמונה");
-  } finally {
-    setVisionLoading(false);
-  }
-};
-
-  /* ---------- UI ---------- */
+  const closeModals = () => {
+    setShowModal(false);
+    setResult(null);
+    setRecommendation(null);
+  };
 
   return (
-    <div style={pageStyle}>
-      {/* Header */}
-      <h1 style={titleStyle}>
-        🎓 Smart Study Coach
-      </h1>
-      <p style={subtitleStyle}>
-        שאל שאלה · קבל תרגיל · השתפר עם הזמן
-      </p>
+    <div className="bento-page">
+      <div className="ambient-background"></div>
 
-      {/* Question Input */}
-      <div style={sectionCard}>
-        <textarea
-          placeholder="✍️ הכנס שאלה לימודית..."
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          style={textareaStyle}
-        />
+      <main className="bento-container">
+        <header className="bento-header">
+          <div className="apple-badge">Smart Coach</div>
+          <h1>What's on your <span>mind?</span></h1>
+        </header>
 
-        <div style={actionsRow}>
-          <button
-            onClick={sendQuestion}
-            disabled={loading}
-            style={{ ...primaryButton, opacity: loading ? 0.7 : 1 }}
-          >
-            {loading ? "⏳ שולח..." : "📨 שלח שאלה"}
-          </button>
-
-          <button
-            onClick={fetchRecommendation}
-            disabled={lockedRecommendation}
-            style={{
-              ...secondaryButton,
-              opacity: lockedRecommendation ? 0.6 : 1,
-            }}
-          >
-            {lockedRecommendation ? "🔒 יש תרגיל פתוח" : "🎯 קבל תרגיל מומלץ"}
-          </button>
-        </div>
-
-        {error && <p style={errorStyle}>{error}</p>}
-      </div>
-
-      {/* Image Upload */}
-      <div style={sectionCard}>
-        <h3 style={{ marginBottom: 10 }}>📸 העלאת תמונה של שאלה</h3>
-
-        <input
-          type="file"
-          accept="image/*"
-          onChange={(e) => setImageFile(e.target.files?.[0] || null)}
-        />
-
-        <button
-          onClick={sendImageToVision}
-          disabled={!imageFile || visionLoading}
-          style={{ ...primaryButton, marginTop: 15 }}
-        >
-          {visionLoading ? "⏳ מנתח תמונה..." : "🔍 נתח תמונה"}
-        </button>
-      </div>
-
-      {visionResult && (
-        <div style={{ ...sectionCard, borderRight: "6px solid #9333ea" }}>
-          <h2>👁️ ניתוח תמונה (Gemini)</h2>
-
-          <p><strong>שאלה:</strong> {visionResult.vision.question_text}</p>
-          <p><strong>מקצוע:</strong> {visionResult.vision.subject}</p>
-          <p><strong>נושא:</strong> {visionResult.vision.topic}</p>
-          <p><strong>רמת קושי:</strong> {visionResult.vision.difficulty}</p>
-
-          <hr style={{ margin: "20px 0" }} />
-
-          <h2>🧠 פתרון (GPT)</h2>
-          <p><strong>פתרון:</strong> {visionResult.solution.solution}</p>
-          <p><strong>הסבר:</strong> {visionResult.solution.explanation}</p>
-        </div>
-      )}
-
-      {/* Voice Input */}
-      <div style={sectionCard}>
-        <h3>🎤 שאל שאלה בקול</h3>
-
-        {!recording ? (
-          <button onClick={startRecording} style={primaryButton}>
-            🎙️ התחל הקלטה
-          </button>
-        ) : (
-          <button onClick={stopRecording} style={failButton}>
-            ⏹️ עצור הקלטה
-          </button>
-        )}
-
-        {audioBlob && (
-          <div style={{ marginTop: 15 }}>
-            <button onClick={sendVoiceQuestion} style={secondaryButton}>
-              🚀 שלח שאלה קולית
-            </button>
-          </div>
-        )}
-      </div>
-        {/* Document Assistant */}
-        <div style={{ marginTop: 40 }}>
-          <DocumentAssistant />
-        </div>
-
-
-      {voiceResult && (
-        <div style={{ ...sectionCard, borderRight: "6px solid #f59e0b" }}>
-          <h2>🗣️ שאלה (Voice)</h2>
-          <p>{voiceResult.question}</p>
-
-          <h3>🧠 פתרון</h3>
-          <p>{voiceResult.solution}</p>
-
-          {voiceResult.audio_url && (
-            <audio controls src={voiceResult.audio_url} style={{ marginTop: 15 }} />
-          )}
-        </div>
-      )}
-
-      {voiceResult && (
-        <div style={{ ...sectionCard, borderRight: "6px solid #0ea5e9" }}>
-          <h2>🎙️ שאלה שזוהתה מהקול</h2>
-          <p><strong>Whisper שמע:</strong> {voiceResult.question}</p>
-
-          <hr style={{ margin: "20px 0" }} />
-
-          <h2>🧠 פתרון (GPT)</h2>
-          <p>{voiceResult.solution}</p>
-
-          {voiceResult.audio_url && (
-            <audio controls src={voiceResult.audio_url} />
-          )}
-        </div>
-      )}
-
-      {/* Result */}
-      {result && (
-        <div style={{ ...sectionCard, borderRight: "6px solid #2563eb" }}>
-          <h3>🧠 רמז ראשון</h3>
-          <p>{result.hint_1}</p>
-
-          <h3>📘 רמז שני</h3>
-          <p>{result.hint_2}</p>
-
-          <h3>✅ פתרון</h3>
-          <p>{result.solution}</p>
-
-          <h3>📖 הסבר</h3>
-          <p>{result.explanation}</p>
-        </div>
-      )}
-
-      {/* Recommendation */}
-      {recommendation && (
-        
-        <div style={{ ...sectionCard, borderRight: "6px solid #10b981" }}>
-          <h2>📘 תרגיל מומלץ</h2>
-          <p style={{ fontSize: 16 }}>{recommendation.question}</p>
-
-          {!feedbackSent ? (
-            <div style={actionsRow}>
-              <button onClick={() => sendFeedback(true)} style={successButton}>
-                ✅ הצלחתי
+        <div className="grid-layout">
+          {/* TEXT INPUT CARD */}
+          <section className="bento-card main-input-card">
+            <div className="card-top">
+              <span className="card-tag">Ask Anything</span>
+            </div>
+            <textarea
+              placeholder="Enter a study question..."
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+            />
+            <div className="main-card-footer">
+              <button onClick={fetchRecommendation} disabled={lockedRecommendation} className={`recommend-pill ${lockedRecommendation ? 'locked' : ''}`}>
+                <Sparkles size={16} />
+                <span>{lockedRecommendation ? "Exercise Active" : "Recommend"}</span>
               </button>
-              <button onClick={() => sendFeedback(false)} style={failButton}>
-                ❌ נכשלתי
+              <button onClick={sendQuestion} disabled={!question || isProcessing} className="send-pill">
+                <Send size={16} /> Send
               </button>
             </div>
-          ) : (
-            <p style={successText}>✔ המשוב נשמר והמערכת לומדת</p>
-          )}
-        </div>
-      )}
+          </section>
 
-      {/* Chart */}
-      {stats && (
-        <div style={chartCard}>
-          <ProgressChart data={stats} />
+          {/* VISION CARD */}
+          <section className="bento-card tool-card">
+            <div className="tool-header">
+              <div className="icon-circle purple"><Camera size={20} /></div>
+              <h3>Vision</h3>
+            </div>
+            <p className="tool-desc">Upload a photo of your problem.</p>
+            <div className="tool-action-area">
+              {!imageFile ? (
+                <label className="apple-upload-label">
+                  <input type="file" accept="image/*" hidden onChange={(e) => setImageFile(e.target.files?.[0] || null)} />
+                  <Upload size={18} />
+                  <span>Upload</span>
+                </label>
+              ) : (
+                <div className="file-ready animate-pop">
+                  <span className="file-name-mini">Photo Ready</span>
+                  <button onClick={sendImageToVision} className="tool-exec-btn purple">Analyze</button>
+                  <button onClick={() => setImageFile(null)} className="clear-x"><X size={12} /></button>
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* VOICE CARD */}
+          <section className="bento-card tool-card">
+            <div className="tool-header">
+              <div className="icon-circle orange"><Waves size={20} /></div>
+              <h3>Voice</h3>
+            </div>
+            <p className="tool-desc">Record your question.</p>
+            <div className="tool-action-area">
+              <button onClick={recording ? stopRecording : startRecording} className={`apple-mic-btn ${recording ? 'is-recording' : ''}`}>
+                {recording ? <StopCircle size={24} /> : <Mic size={24} />}
+              </button>
+              {audioBlob && !recording && (
+                <button onClick={sendVoiceQuestion} className="tool-exec-btn orange animate-pop">Send Voice</button>
+              )}
+            </div>
+          </section>
+
+          <section className="bento-card docs-card">
+            <div className="tool-header"><div className="icon-circle blue"><FileText size={20} /></div><h3>Files</h3></div>
+            <DocumentAssistant />
+          </section>
+
+          <section className="bento-card stats-card">
+            <div className="tool-header"><div className="icon-circle green"><BarChart3 size={20} /></div><h3>Progress</h3></div>
+            {stats && <ProgressChart data={stats} />}
+          </section>
+        </div>
+      </main>
+
+      {/* FIXED UNIFIED MODAL */}
+      {showModal && (
+        <div className="apple-modal-overlay" onClick={closeModals}>
+          <div className="apple-modal-content" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-indicator"></div>
+              <button className="modal-close-btn" onClick={closeModals}><X size={16} /></button>
+            </div>
+
+            <div className="modal-body-scroll">
+              {isProcessing ? (
+                <div className="modal-loading-state">
+                  <div className="apple-spinner"></div>
+                  <h3>{processingMessage}</h3>
+                </div>
+              ) : (
+                <>
+                  {/* Unified Result Display (Text, Voice, Vision) */}
+                  {result && (
+                    <div className="answer-layout animate-pop">
+                      <div className="modal-tag">Intelligence Result</div>
+                      {result.hint_1 && (
+                        <div className="hint-card">
+                          <strong className="label-accent">Context</strong>
+                          <p>{result.hint_1}</p>
+                        </div>
+                      )}
+                      <div className="content-section">
+                        <strong className="apple-label">Answer:</strong>
+                        <div className="solution-text">{result.solution}</div>
+                      </div>
+                      <div className="content-section">
+                        <strong className="apple-label">Explanation:</strong>
+                        <div className="explanation-bubble">{result.explanation}</div>
+                      </div>
+                      {result.audio_url && <audio controls src={result.audio_url} className="modal-audio" />}
+                    </div>
+                  )}
+
+                  {/* Recommendation Display */}
+                  {recommendation && !result && (
+                    <div className="answer-layout animate-pop">
+                      <div className="modal-tag">Exercise</div>
+                      <h2 className="rec-title">{recommendation.question}</h2>
+                      {!feedbackSent ? (
+                        <div className="apple-feedback-btns">
+                          <button onClick={() => sendFeedback(true)} className="fb-btn-apple yes"><CheckCircle size={18} /> Solved</button>
+                          <button onClick={() => sendFeedback(false)} className="fb-btn-apple no"><XCircle size={18} /> Show Solution</button>
+                        </div>
+                      ) : <div className="learning-msg">Progress Saved.</div>}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>
   );
 }
-
-/* ---------- STYLES ---------- */
-
-const pageStyle = {
-  direction: "rtl" as const,
-  maxWidth: 1000,
-  margin: "80px auto",
-  padding: 50,
-  background: "#ffffff",
-  borderRadius: 24,
-  boxShadow: "0 40px 120px rgba(0,0,0,0.35)",
-};
-
-const titleStyle = {
-  textAlign: "center" as const,
-  fontSize: 32,
-  fontWeight: 800,
-  marginBottom: 6,
-};
-
-const subtitleStyle = {
-  textAlign: "center" as const,
-  color: "#64748b",
-  marginBottom: 40,
-};
-
-const sectionCard = {
-  background: "#f8fafc",
-  padding: 30,
-  borderRadius: 18,
-  border: "1px solid #e5e7eb",
-  marginBottom: 30,
-};
-
-const textareaStyle = {
-  width: "100%",
-  height: 110,
-  padding: 14,
-  fontSize: 16,
-  borderRadius: 12,
-  border: "1px solid #cbd5e1",
-  resize: "vertical" as const,
-};
-
-const actionsRow = {
-  display: "flex",
-  justifyContent: "center",
-  gap: 16,
-  marginTop: 20,
-  flexWrap: "wrap" as const,
-};
-
-const primaryButton = {
-  padding: "12px 22px",
-  background: "#2563eb",
-  color: "white",
-  border: "none",
-  borderRadius: 10,
-  fontSize: 15,
-  cursor: "pointer",
-};
-
-const secondaryButton = {
-  padding: "12px 22px",
-  background: "#10b981",
-  color: "white",
-  border: "none",
-  borderRadius: 10,
-  fontSize: 15,
-  cursor: "pointer",
-};
-
-const successButton = {
-  padding: "10px 20px",
-  background: "#22c55e",
-  color: "white",
-  border: "none",
-  borderRadius: 10,
-  cursor: "pointer",
-};
-
-const failButton = {
-  padding: "10px 20px",
-  background: "#ef4444",
-  color: "white",
-  border: "none",
-  borderRadius: 10,
-  cursor: "pointer",
-};
-
-const chartCard = {
-  marginTop: 50,
-  padding: 30,
-  background: "#f9fafb",
-  borderRadius: 18,
-  border: "1px solid #e5e7eb",
-};
-
-const chartTitle = {
-  textAlign: "center" as const,
-  marginBottom: 20,
-};
-
-const errorStyle = {
-  color: "#dc2626",
-  marginTop: 15,
-  textAlign: "center" as const,
-  fontWeight: 600,
-};
-
-const successText = {
-  marginTop: 15,
-  color: "#16a34a",
-  fontWeight: 700,
-};
 
 export default HomePage;
