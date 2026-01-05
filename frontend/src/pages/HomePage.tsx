@@ -375,6 +375,7 @@ function HomePage() {
 
       {/* Recommendation */}
       {recommendation && (
+        
         <div style={{ ...sectionCard, borderRight: "6px solid #10b981" }}>
           <h2>📘 תרגיל מומלץ</h2>
           <p style={{ fontSize: 16 }}>{recommendation.question}</p>

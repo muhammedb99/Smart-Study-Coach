@@ -2,7 +2,7 @@ from sklearn.tree import DecisionTreeClassifier
 import pickle
 import os
 
-BASE_DIR = os.path.dirname(_file_)
+BASE_DIR = os.path.dirname(__file__)
 MODEL_PATH = os.path.join(BASE_DIR, "model.pkl")
 
 difficulty_reverse = {
@@ -18,11 +18,12 @@ def train_model():
     """
 
     X = [
-        [0.9, 1],  
-        [0.2, 2],   
-        [0.6, 1],   
-        [0.95, 2],
+        [0.9, 1, 3, 40, 2],
+        [0.3, 0, 0, 5, 0.5],
+        [0.6, 1, 1, 15, 1],
+        [0.95, 2, 4, 60, 2],
     ]
+
 
     y = [2, 0, 1, 2]
 
